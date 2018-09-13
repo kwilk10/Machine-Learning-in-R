@@ -1,0 +1,739 @@
+---
+title: "Classification Methods"
+author: "Katherine Wilkinson"
+date: "2/18/2018"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A variety of classification methods are demonstrated here on the Automobile mpg data set. Here we work on classifying cars into three different classes of cylinders based on information provided by other continuous input features or predictors. Specifically, class labe $Y = 1$ if the number of cylinders is 5 or lesss, $Y = 2$ if the number of cylinders is 6, and $Y = 3$ otherwise. 
+
+Classification Methods Include:
+
+a. Linear and Quadratic Discriminant Analysis 
+
+b. Logistic Regression 
+
+c. Nearest neighbor classifier including using cross-validation to chose the best value of k
+
+
+
+```{r setup2, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+rm(list=ls())
+setwd("/Users/maraudersmap/Documents/Machine-Learning-in-R/Classification-Methods")
+library(ggplot2)
+library(GGally)
+library(dplyr)
+
+library(stats)     # glm
+library(MASS)      # lda
+library(nnet)      # multinom
+library(class) 
+library(knitr)
+library(kableExtra)
+library(reshape2)
+
+```
+
+We first preprocess the data set in two ways:
+
+1. Standardize all continuous valued columns so they all have zero mean and unit variance
+
+2. Perform principal component analysis on the continuous features and represent the data based on the first two or more principal components
+
+Initially we select from each class 75% of the data which shall be our training data. The remaining 25% is used as our test data. 
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+data_auto = read.table('auto-mpg.data', header = FALSE)
+
+## Rename column names
+colnames(data_auto) <- c('mpg','cylinders','displacement','horsepower',
+                        'weight','acceleration',
+                        'model_year','origin','car_name')
+
+
+#make horsepower numeric
+data_auto$horsepower <- as.numeric(as.character(data_auto$horsepower))
+
+
+auto_og <- na.omit(data_auto)
+
+##Select just numerical data and cylinders which will be where the classes are
+auto_og <- auto_og %>% dplyr::select(-car_name)#, -model_year, -origin)
+
+auto_og$cylinders[auto_og$cylinders <= 5] <- 1
+auto_og$cylinders[auto_og$cylinders == 6] <- 2
+auto_og$cylinders[auto_og$cylinders > 6] <- 3
+
+auto_og$cylinders <- as.factor(auto_og$cylinders)
+
+auto_og <- auto_og %>% dplyr::select(mpg, cylinders, displacement, weight, acceleration, horsepower)
+
+auto_og2 <- auto_og %>% dplyr::select(mpg, displacement, cylinders)
+
+##create classes for cylinder variable
+classes= lapply(levels(auto_og$cylinders), function(x) which(auto_og$cylinders==x))
+length(classes[1])*.75
+
+train = lapply(classes, function(class) sample(class, 0.7*length(class), replace = F))
+train = unlist(train)
+test = (1:nrow(auto_og))[-train]
+autotrain = auto_og[train,]
+autotest = auto_og[test,]
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+##do GGpairs for both train and test to make sure they look similar
+ggpairs(autotrain, #columns=1:4,
+        mapping=aes(color=cylinders),
+        diag = list(continuous = 'barDiag'),
+        #axisLabels = "internal",
+        upper = list(continuous='points', combo = 'dot'),
+        lower = list(continuous = 'cor', combo = 'dot'),
+        title = 'Train Data')
+
+ggpairs(autotest, #columns=1:4,
+        mapping=aes(color=cylinders),
+        diag = list(continuous = 'barDiag'),
+        #axisLabels = "internal",
+        upper = list(continuous='points', combo = 'dot'),
+        lower = list(continuous = 'cor', combo = 'dot'),
+        title = 'Test Data')
+
+## Questions
+    ## Do we need to do the train/test on ALL the data. that is, not just numerical data??
+    ## Double check that
+```
+
+## 2b. 
+
+## LDA on original Data
+
+Apply Linear Discriminat Analysis to the original data set. 
+
+```{r pressure, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+library(MASS)
+
+########################################################
+
+## LDA on full data set
+auto_oglda = lda(data=autotrain,cylinders~.)
+
+auto_ogpred = predict(auto_oglda, autotest)
+
+auto_ogpred2 = predict(auto_oglda, autotrain)
+
+dataset <- data.frame(cylinders = autotrain[,"cylinders"]
+                      , lda = auto_ogpred2$x)
+
+dataset_t <- data.frame(cylinders = autotest[,"cylinders"]
+                      , lda = auto_ogpred$x)
+
+## plot training data and prediction on training data 
+##Using original data
+p_og <- ggplot(dataset) + geom_point(aes(lda.LD1, lda.LD2, colour = cylinders, shape = cylinders), 
+                                   size = 2.5) 
+
+p_og_t <- ggplot(dataset_t) + geom_point(aes(lda.LD1, lda.LD2, colour = cylinders, shape = cylinders), 
+                                   size = 2.5) 
+
+ct <- table(autotest$cylinders, auto_ogpred$class)
+ct2 <- table(autotrain$cylinders, auto_ogpred2$class)
+
+error1 = 1-sum(diag(ct))/sum(ct)
+error2 = 1-sum(diag(ct2))/sum(ct2)
+
+errors_og <- as.data.frame(c(error1, error2))
+rownames(errors_og) <- c('Test Error','Train Error')
+colnames(errors_og) <- c('Original Data')
+errors_og
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+########################################################
+
+##LDA using just mpg and displacement
+auto_dm <- autotrain %>% dplyr::select(mpg, displacement, cylinders)
+auto_dm2 <- autotest %>% dplyr::select(mpg, displacement, cylinders)
+
+auto_oglda2 = lda(data=auto_dm,cylinders~.)
+
+auto_ogpred2 = predict(auto_oglda2, auto_dm2)
+
+ct2m <- table(auto_dm2$cylinders, auto_ogpred2$class)
+
+error2m = 1-sum(diag(ct2))/sum(ct2)
+
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+##Use just MPG and Displacement for this plot
+boundary_plot <- function(df, classifier, predict_function,   resolution = 500) {
+  colnames(df) = c("Var1", "Var2", "Class")
+  class_train = classifier(x = df[,1:2], y = df[,3])
+  v1 = seq(min(df[,1]), max(df[,1]), length=resolution)
+  v2 = seq(min(df[,2]), max(df[,2]), length=resolution)
+  Grid = expand.grid(Var1 = v1, Var2 = v2)
+  Grid$class = predict_function(class_train, Grid)
+  ggplot(data=df, aes(x=Var1, y=Var2, color=Class)) +
+    geom_contour(data=Grid, aes(z=as.numeric(class)),
+                 color="black",size=0.5)+
+    geom_point(size=2,aes(color=Class, shape=Class))
+}
+
+lda_wrapper = function(x, y) lda(x = x, grouping = y)
+predict_wrapper = function(classifier, data) predict(classifier, data)$class
+og_lda = boundary_plot(auto_og2, lda_wrapper, predict_wrapper) +
+  ggtitle('Auto Original LDA') + theme_dark() + labs(x = 'MPG', y = 'Displacement')
+
+
+########################################################
+
+```
+
+
+## LDA on Standardized Data
+
+Apply Linear Discriminat Analysis to the standardized data set. 
+
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+### Now do it with standardized data and all variables
+
+auto_s = auto_og
+auto_s$mpg <- scale(auto_og$mpg)
+auto_s$displacement <- scale(auto_og$displacement)
+auto_s$horsepower <- scale(auto_og$horsepower)
+auto_s$weight <- scale(auto_og$weight)
+auto_s$acceleration <- scale(auto_og$acceleration)
+
+
+classes= lapply(levels(auto_s$cylinders), function(x) which(auto_s$cylinders==x))
+length(classes[1])*.75
+
+train = lapply(classes, function(class) sample(class, 0.7*length(class), replace = F))
+train = unlist(train)
+test = (1:nrow(auto_s))[-train]
+autotrain_s = auto_s[train,]
+autotest_s = auto_s[test,]
+
+auto_slda = lda(data=autotrain_s,cylinders~.)
+
+
+auto_spred = predict(auto_slda, autotest_s)
+auto_spred2 = predict(auto_slda, autotrain_s)
+
+ct_s <- table(autotest_s$cylinders, auto_spred$class)
+error_s = 1-sum(diag(ct_s))/sum(ct_s)
+
+
+ct_s2 <- table(autotrain_s$cylinders, auto_spred2$class)
+error_s2 = 1-sum(diag(ct_s2))/sum(ct_s2)
+
+
+errors_s <- as.data.frame(c(error_s, error_s2))
+rownames(errors_s) <- c('Test Error','Train Error')
+colnames(errors_s) <- c('Standardized Data')
+
+#######################################################
+```
+
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+## Now do it all with just mpg and displacement
+
+auto_dms <- autotrain_s %>% dplyr::select(mpg, displacement, cylinders)
+auto_dms$mpg <- scale(auto_dms$mpg)
+auto_dms$displacement <- scale(auto_dms$displacement)
+
+auto_og2s = auto_og2
+auto_og2s$mpg = scale(auto_og2$mpg)
+auto_og2s$displacement <- scale(auto_og2$displacement)
+
+
+auto_dms2 <- autotest_s %>% dplyr::select(mpg, displacement, cylinders)
+auto_dms2$mpg <- scale(auto_dms2$mpg)
+auto_dms2$displacement <- scale(auto_dms2$displacement)
+
+auto_slda2 = lda(data=auto_dms,cylinders~.)
+
+auto_spred2 = predict(auto_slda2, auto_dms2)
+
+ct2_s <- table(auto_dms2$cylinders, auto_spred2$class)
+ct2_s
+
+error2_s = 1-sum(diag(ct2_s))/sum(ct2_s)
+error2_s
+
+
+##Use just MPG and Displacement for this plot
+s_lda = boundary_plot(auto_og2s, lda_wrapper, predict_wrapper) +
+  ggtitle('Auto Scaled LDA') + theme_dark()+ labs(x = 'MPG', y = 'Displacement')
+
+#######################################################
+
+
+```
+
+## LDA on PCA-preprocessed data
+
+Apply Linear Discriminat Analysis to the PCA processed data set 
+
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+###PCA
+auto_pc <- auto_og %>% dplyr::select(-cylinders)
+
+auto_pc <- scale(auto_pc, scale = F)
+
+
+auto.PCAcor <- princomp(auto_pc, cor=T)
+
+pca_proj_auto <- as.data.frame(as.matrix(scale(auto_pc)) %*% 
+                                   loadings(auto.PCAcor)[,1:2])
+
+
+auto_pca <- cbind(pca_proj_auto, auto_og$cylinders)
+colnames(auto_pca) <- c('PC1', 'PC2', 'cylinders')
+
+classes= lapply(levels(auto_pca$cylinders), function(x) which(auto_pca$cylinders==x))
+length(classes[1])*.75
+
+train = lapply(classes, function(class) sample(class, 0.7*length(class), replace = F))
+train = unlist(train)
+test = (1:nrow(auto_pca))[-train]
+autotrain_pca = auto_pca[train,]
+autotest_pca = auto_pca[test,]
+
+
+auto_pclda = lda(data=autotrain_pca,cylinders~.)
+
+auto_spred_pc = predict(auto_pclda, autotest_pca)
+auto_spred_pc2 = predict(auto_pclda, autotrain_pca)
+
+ct_pc <- table(autotest_pca$cylinders, auto_spred_pc$class)
+error_pc = 1-sum(diag(ct_pc))/sum(ct_pc)
+
+ct_pc2 <- table(autotrain_pca$cylinders, auto_spred_pc2$class)
+
+error_pc2 = 1-sum(diag(ct_pc2))/sum(ct_pc2)
+
+
+errors_pc <- as.data.frame(c(error_pc, error_pc2))
+rownames(errors_pc) <- c('Test Error','Train Error')
+colnames(errors_pc) <- c('PCA Preprocessed Data')
+
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+##PCA lda plot and all plots
+#######################################################
+
+pc_lda = boundary_plot(auto_pca, lda_wrapper, predict_wrapper) +
+  ggtitle('Auto PCA LDA') + theme_dark()+ labs(x = 'PC1', y = 'PC2')
+pc_lda
+library(grid)
+library(gridExtra)
+og_lda
+s_lda
+pc_lda
+
+##So far have done everything on just the train data. Are we supposed to do it on something else????
+
+```
+
+## Errors for LDA
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+lda_errors <- cbind(errors_og, errors_s, errors_pc)
+kable(lda_errors, caption = 'LDA Error Rates')
+```
+
+
+
+## QDA on original data
+
+Apply Quadratic Discriminat Analysis to the original data set. 
+
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+## First start with just original data
+
+auto_ogqda = qda(data=autotrain,cylinders~.)
+
+auto_ogpredq = predict(auto_ogqda, autotest)
+auto_ogpredq2 = predict(auto_ogqda, autotrain)
+
+ctq <- table(autotest$cylinders, auto_ogpredq$class)
+error_q = 1-sum(diag(ctq))/sum(ctq)
+
+ctq2 <- table(autotrain$cylinders, auto_ogpredq2$class)
+error_q2 = 1-sum(diag(ctq2))/sum(ctq2)
+
+errors_og_q <- as.data.frame(c(error_q, error_q2))
+rownames(errors_og_q) <- c('Test Error', 'Train Error')
+
+
+```
+
+## QDA for Scaled Data
+
+Apply Quadratic Discriminat Analysis to the standardized data set. 
+
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+## Then scaled #auto_dms
+qda_s <- qda(data=autotrain_s, cylinders~.)
+predq_s = predict(qda_s, autotest_s)
+
+predq_s2 = predict(qda_s, autotrain_s)
+
+ctqs <- table(autotest_s$cylinders, predq_s$class)
+error_qs = 1-sum(diag(ctqs))/sum(ctqs)
+
+ctqs2 <- table(autotrain_s$cylinders, predq_s2$class)
+error_qs2 = 1-sum(diag(ctqs2))/sum(ctqs2)
+
+errors_s_q <- as.data.frame(c(error_qs, error_qs2))
+rownames(errors_s_q) <- c('Test Error', 'Train Error')
+
+```
+
+## QDA for PCA-preprocessed data
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+##And then on PCA-preprocessed data
+
+qda_pc <- qda(data=autotrain_pca, cylinders~.)
+predq_pc = predict(qda_pc, autotest_pca)
+
+predq_pc2 = predict(qda_pc, autotrain_pca)
+
+ctq_pc <- table(autotest_pca$cylinders, predq_pc$class)
+error_qpc = 1-sum(diag(ctq_pc))/sum(ctq_pc)
+
+ctq_pc2 <- table(autotrain_pca$cylinders, predq_pc2$class)
+error_qpc2 = 1-sum(diag(ctq_pc2))/sum(ctq_pc2)
+
+
+errors_pc_q <- as.data.frame(c(error_qpc, error_qpc2))
+rownames(errors_pc_q) <- c('Test Error', 'Train Error')
+
+```
+
+## Errors for QDA
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+qda_errors <- cbind(errors_og_q, errors_s_q, errors_pc_q)
+colnames(qda_errors) <- c('Original Data','Standardized Data', 'PCA Prerocessed Data')
+
+kable(qda_errors, caption = 'QDA Error Rates')
+```
+
+
+## Logisitc Regression Model
+
+## Logistic Regression on Original Data
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+## First start with just original data
+multi_logit <- multinom(cylinders ~ mpg + displacement + horsepower + weight + acceleration, autotrain)
+summary(multi_logit)
+
+
+mer_ts <- mean(predict(multi_logit, autotest, type = "class") != autotest$cylinders)
+mer_tr <- mean(predict(multi_logit, autotrain, type = "class") != autotrain$cylinders)
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+## Then scaled
+
+multi_logit_s <- multinom(cylinders ~ mpg + displacement + horsepower + weight + acceleration, autotrain_s)
+summary(multi_logit_s)
+mer_ts_s <- mean(predict(multi_logit_s, autotest_s, type = "class") != autotest_s$cylinders)
+mer_tr_s <- mean(predict(multi_logit_s, autotrain_s, type = "class") != autotrain_s$cylinders)
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+##And then on PCA-preprocessed data
+
+multi_logit_pc <- multinom(cylinders ~ PC1 + PC2, autotrain_pca)
+summary(multi_logit_pc)
+mer_ts_pc <- mean(predict(multi_logit_pc, autotest_pca, type = "class") != autotest_pca$cylinders)
+mer_tr_pc <- mean(predict(multi_logit_pc, autotrain_pca, type = "class") != autotrain_pca$cylinders)
+
+```
+## Mean Error Rate 
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+MERt <- c(mer_tr, mer_tr_s, mer_tr_pc)
+MERts <- c(mer_ts, mer_ts_s, mer_ts_pc)
+MERt <- t(as.data.frame(MERt))
+MERt
+MERts <- t(as.data.frame(MERts))
+
+MER <- rbind(MERts, MERt)
+colnames(MER) <- c('Oringial Data','Standardized Data','PCA-preprocessed data')
+rownames(MER) <- c('Test','Train')
+
+kable(MER, caption = 'Logistic Regression: Mean Error Rate') %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F,
+                             position = 'float_right')
+
+```
+
+## Nearest Neighbor Classifier
+
+Use cross-validation on the trainig set to choose the value of k
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+## First start with just original data
+
+autotrain2 <- autotrain %>% dplyr::select(-cylinders)
+autotest2 <- autotest %>% dplyr::select(-cylinders)
+
+auto_knn <- knn(train = autotrain2, cl = autotrain$cylinders, 
+                test = autotest2, k = 2)
+
+auto_knn2 <- knn(train = autotrain2, cl = autotrain$cylinders, 
+                test = autotrain2, k = 2)
+table(auto_knn, autotest$cylinders)
+m1 <- mean(auto_knn != autotest$cylinders)
+
+mean(auto_knn2 != autotrain$cylinders)
+length(auto_knn)
+length(autotrain$cylinders)
+
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+### With scaled
+autotrain2s <- autotrain_s %>% dplyr::select(-cylinders)
+autotest2s <- autotest_s %>% dplyr::select(-cylinders)
+
+auto_knn2s <- knn(train = autotrain2s, cl = autotrain_s$cylinders, 
+                test = autotest2s, k = 2)
+table(auto_knn2s, autotest_s$cylinders)
+
+m2 <- mean(auto_knn2s != autotest_s$cylinders)
+```
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+autotrain2.2pc <- autotrain_pca %>% dplyr::select(-cylinders)
+autotest2.2pc <- autotest_pca %>% dplyr::select(-cylinders)
+
+auto_knn2pc <- knn(train = autotrain2.2pc, cl = autotrain_pca$cylinders, 
+                test = autotest2.2pc, k = 2)
+m3 <- mean(auto_knn2pc != autotest_pca$cylinders)
+
+knn_means <- t(as.data.frame(c(m1, m2, m3)))
+colnames(knn_means) <- c('Original Data','Standardized Data','PCA processed Data')
+
+```
+
+## KNN function for compute multiple neighbors 
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+
+multi.knn <- function(train, test, kn, cl, test_var){
+  m_error = NULL
+  
+  for(i in 1:kn){
+    k = knn(train = train, cl = cl, 
+            test= test, k = i)
+    m_error[i] = mean(k != test_var)
+    
+  }
+  m_error = t(as.data.frame(m_error))
+  colnames(m_error) <- paste("k=", 1:ncol(m_error), sep = "")
+  
+  return(m_error)
+}
+
+knn_og <- multi.knn(train = autotrain2, test = autotest2, kn = 8, cl = autotrain$cylinders, 
+          test_var = autotest$cylinders)
+
+
+knn_og2 <- multi.knn(train = autotrain2, test = autotrain2, kn = 8, cl = autotrain$cylinders, 
+          test_var = autotrain$cylinders)
+
+og_error <- rbind(knn_og2, knn_og)
+rownames(og_error) = c('Train','Test')
+
+
+knn_s <- multi.knn(train = autotrain2s, test = autotest2s, kn = 8, cl = autotrain_s$cylinders,
+                   test_var = autotest_s$cylinders)
+
+
+knn_s2 <- multi.knn(train = autotrain2s, test = autotrain2s, kn = 8, cl = autotrain_s$cylinders,
+                   test_var = autotrain_s$cylinders)
+
+s_error <- rbind(knn_s2, knn_s)
+rownames(s_error) = c('Train','Test')
+
+
+knn_pc <- multi.knn(train = autotrain2.2pc, test= autotest2.2pc, kn = 8, cl = autotrain_pca$cylinders,
+                    test_var = autotest_pca$cylinders)
+
+knn_pc2 <- multi.knn(train = autotrain2.2pc, test= autotrain2.2pc, kn = 8, cl = autotrain_pca$cylinders,
+                    test_var = autotrain_pca$cylinders)
+
+pc_error <- rbind(knn_pc2, knn_pc)
+rownames(pc_error) = c('Train','Test')
+
+```
+
+## Cross Validation
+
+```{r, eval = FALSE, message = FALSE, error = FALSE, warning = FALSE}
+########
+cv.knn<- function (dataY, dataX, kn=1, K=10, seed=123) {
+  n <- nrow(dataX)
+  set.seed(seed)
+  library(class)
+  
+  f <- ceiling(n/K)
+  s <- sample(rep(1:K, f), n)  
+  dataX=scale(dataX)
+  CV=NULL;PvsO=NULL
+  
+  for (i in 1:K) { 
+    test.index <- seq_len(n)[(s == i)] #test data
+    train.index <- seq_len(n)[(s != i)] #training data
+   
+    train.X <- dataX[train.index,]
+    test.X <- dataX[test.index,]
+    train.y <- dataY[train.index]
+    test.y <- dataY[test.index]
+    #predicted test set y
+    knn.pred=knn(train.X, test.X, train.y, k=kn) 
+    #observed - predicted on test data 
+    error= mean(knn.pred!=test.y) 
+    #error rates 
+    CV=c(CV,mean(error))
+    predvsobs=data.frame(knn.pred,test.y)
+    PvsO=rbind(PvsO,predvsobs)
+  } 
+  
+  #Output
+  list(k = K, error = CV,
+       knn_error_rate = mean(CV), confusion=table(PvsO[,1],PvsO[,2]), seed=seed)
+}
+
+
+multi.knn.cv <- function(dataY, dataX, kn, K){
+  cv.error=NULL
+  for (i in 1:kn) {
+    cv.error[i] <- cv.knn(dataY, dataX, kn=i, 
+                        K=K, seed=123)$knn_error_rate
+ 
+  }
+  cv.table = t(as.data.frame(cv.error))
+  colnames(cv.table) <- paste("k=", 1:ncol(cv.table), sep = "")
+  
+  return(cv.table)
+}
+
+e1 = multi.knn.cv(dataY = autotrain$cylinders,dataX = autotrain2, kn = 8, K = 5)
+
+e2 = multi.knn.cv(dataY = autotrain_s$cylinders,dataX = autotrain2s, kn = 8, K = 5)
+e3 = multi.knn.cv(dataY = autotrain_pca$cylinders,dataX = autotrain2.2pc, kn = 8, K = 5)
+
+cv_errors <- rbind(e1,e2,e3)
+rownames(cv_errors) <- c('Original Data', 'Standardized Data','PCA-processed Data')
+
+k1 <- which(e1 == min(e1))
+k2 <- which(e2 == min(e2))
+k3 <- which(e3==min(e3))
+k1
+min(e1)
+min(e2)
+min(e3)
+e3[,3]
+e3[,2]
+k2
+k3
+
+#cv_errors <- cbind(cv_errors,best_k)
+cv_errors <- as.data.frame(cv_errors)
+cv_errors[2,]
+
+
+##plot for Original Data Errors
+errors_mixed <- rbind(og_error, cv_errors[1,])
+errors_mixed$type <- c('Train Error','Test Error','CV Error')
+
+errors_mixed_melted <- melt(errors_mixed, id.vars = 'type')
+errors_mixed_melted
+
+ggplot(errors_mixed_melted, aes(x = variable, y = value)) + geom_line(aes(color = type, group = type)) +
+  ggtitle('Original')
+```
+
+
+
+```{r, eval = FALSE}
+
+ 
+##plot for Standardized Data Errors
+
+errors_mixeds <- rbind(s_error, cv_errors[2,])
+errors_mixeds$type <- c('Train Error','Test Error','CV Error')
+
+errors_mixed_melteds <- melt(errors_mixeds, id.vars = 'type')
+
+ggplot(errors_mixed_melteds, aes(x = variable, y = value)) + geom_line(aes(color = type, group = type))+
+  ggtitle('Standardized')
+ 
+## plot for PC errors
+
+errors_mixedpc <- rbind(pc_error, cv_errors[3,])
+errors_mixedpc$type <- c('Train Error','Test Error','CV Error')
+
+errors_mixed_meltedpc <- melt(errors_mixedpc, id.vars = 'type')
+errors_mixed_meltedpc
+
+ggplot(errors_mixed_meltedpc, aes(x = variable, y = value)) + geom_line(aes(color = type, group = type))+
+  ggtitle('PCA')
+```
+
+```{r, eval = FALSE}
+ 
+og_3 <- t(as.data.frame(errors_mixed[,3]))
+og_3
+
+colnames(og_3) = c('Train','Test','CV')
+rownames(og_3) = c('Original Data')
+
+s_3 <- t(as.data.frame(errors_mixeds[,3]))
+colnames(s_3) = c('Train','Test','CV')
+rownames(s_3) = c('Standardized Data')
+
+pc_3 <- t(as.data.frame(errors_mixedpc[,3]))
+colnames(pc_3) = c('Train','Test','CV')
+rownames(pc_3) = c('PCA Preprocessed Data')
+
+errors_3 <- rbind(og_3, s_3, pc_3)
+kable(errors_3, caption = 'Nearest Neighbor Error: k =3')
+
+
+```
+
