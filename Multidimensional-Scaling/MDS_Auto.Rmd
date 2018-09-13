@@ -1,0 +1,294 @@
+---
+title: "Factor Analysis and MDS on auto mpg data"
+author: "Katherine Wilkinson"
+date: "2/7/2018"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In our previous report we did Principal Componenets Analysis on our numerical automobile data to reduce dimensionality. Here, we will try a couple of other approaches, Factor Analysis and Multidimensional scaling and compare to our PCA results. 
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+rm(list=ls())
+setwd("/Users/maraudersmap/Documents/Machine-Learning-in-R/Multidimensional-Scaling")
+library(psych)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+library(corrplot)
+
+data_auto = read.table('auto-mpg.data', header = FALSE)
+
+## Rename column names
+colnames(data_auto) <- c('mpg','cylinders','displacement','horsepower',
+                        'weight','acceleration',
+                        'model_year','origin','car_name')
+
+
+#make horsepower numeric
+data_auto$horsepower <- as.numeric(as.character(data_auto$horsepower))
+
+
+data_auto1 = na.omit(data_auto)
+data_auto3 <- data_auto1 %>% dplyr::select(-car_name)
+
+data_auto3$cylinders = as.numeric(as.factor(data_auto3$cylinders))
+data_auto3$model_year = as.numeric(as.factor(data_auto3$model_year))
+data_auto3$origin = as.numeric(as.factor(data_auto3$origin))
+
+
+data_auto2 <- data_auto %>% 
+  dplyr::select(-car_name, -cylinders, -model_year, -origin)
+
+data_auto2 <- na.omit(data_auto2)
+
+cor_auto <- cor(data_auto2)
+cor_auto1 <- cor(data_auto3)
+
+cov_auto <- cov(data_auto2)
+
+
+corrplot(cor_auto1, tl.col="black", tl.cex=0.75)
+
+```
+Our original dataset looking at different automobiles has 8 variables with 398 observations. There are a number of categorical variables, including the car name, origin, model_year, and  cylinders. We can see from the correlation plot with all variables except car name (of which there are 305 unique names) we can see there is some significant correlation between variables. Most interesting, there is some correlation with our categorical variable cylinders and our all of our numeric varaibles except for acceleration. The number of cylinders is positively correlated with displacement, horsepower, and weight while it is negatively correlated with mpg. With the exception of acceleration, all of our numeric variables are fairly highly correlated with one another. MPG for instance is negatively correlated with displacement, horsepower and weight suggesting that the bigger the car, the less miles per gallon it will get. It may also be important to note that there are a number of NA values in the data set that we will remove to do our Factor Analysis, multidimensional scaling, and PCA. 
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#Scree plot to see how many factors to use
+parallel <- fa.parallel(data_auto2, fm = 'minres', fa = 'fa')
+## Look at how rotation effects the loadings first
+
+#Promax Rotation
+auto_FA_pro = factanal(covmat = cov_auto, factors = 2, rotation = 'promax')
+
+
+#Varimax Rotation
+auto_FA_vari = factanal(covmat = cov_auto, factors = 2, rotation = 'varimax')
+
+  ###Promax seems to be slightly easier to interpret so we will go with that one moving forward
+
+## We can look at the loadins for promax in graph format
+loadp <- auto_FA_pro$loadings[,1:2]
+lp <- qplot(x=loadp[,1], y=loadp[,2], label=rownames(loadp), geom="text",
+            main = 'Promax', xlab = 'Promax 1st Loading',
+            ylab = 'Promax 2nd Loading')
+
+loadv <- auto_FA_vari$loadings[,1:2]
+lv<- qplot(x=loadv[,1], y=loadv[,2], label=rownames(loadv), geom="text", 
+           main = 'Varimax', xlab = 'Varimax 1st Loading', ylab= 'Varimax 2nd Loading')
+
+grid.arrange(lp,lv)
+
+```
+To start our Factor Analysis, we select just our 5 non-categorical variables as we did with PCA (MPG, displacement, horsepower, weight, and acceleration). There are a number of different approaches to Factor Analysis. Initially we look at a scree plot of our scores and see that 2 should be the optimal number to use. We can view these first two loadings with two different rotation methods, Promax and Varimax and see how the loadings are rotated quite differently.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+FA_pro = factanal(x = data_auto2, factors = 2,scores='regression', rotation = 'promax')
+FA_vari = factanal(x = data_auto2, factors = 2,scores='regression', rotation = 'varimax')
+FA_loadings <- cbind(FA_pro$loadings,FA_vari$loadings)
+
+colnames(FA_loadings) <- c('Factor1-P','Factor2-P', 'Factor1-V', 'Factor2-V')
+FA_loadings
+
+FA_pro$loadings
+FA_vari$loadings
+
+
+```
+
+When looking at the different rotations, we can see that the Promax rotation method is slightly easier to interpret. Also, since the cumulative amount of variance explained by the 2 FActors using promax rotation is 83.7% we will use the promax results for our analysis. That is, a couple of the variables have factor loadings that are small enough to consider the effect of the factor on that variable to be negligible. More specifically, Factor 1 for acceleration is small at 0.098 and Factor 2 for MPG is small at 0.007. Displacement (0.887), horsepower (0.652), and weight (1.079) have large positive loadings on Factor 1 while mpg (-0.841) has large negative loading on Factor 1. This also follows what we can see in the first correlation plot, as mpg is negatively correlated with the other variables. 
+For Factor 2, now acceleration (0.943) is has a very large positive loading while hosepower (-0.408) has a large negative loading. Once again, this reflects our correlation plot where we can see that acceleration and horsepower are slightly negatively correlated. It should also be noted that displacement (-0.107) and weight (0.146) have a slightly large negative and positve loading respectively on Factor 2. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+## Compare with PCA
+auto.PCAcor <- princomp(data_auto2, cor=T)
+
+pc_v_fa <- cbind(auto.PCAcor$loadings[,1],FA_pro$loadings[,1],auto.PCAcor$loadings[,2],
+      FA_pro$loadings[,2])
+colnames(pc_v_fa) = c('PC-1','FA-1','PC-2','FA-2')
+pc_v_fa
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+library(ggplot2)
+## Now lets look at the different methods to calculate scores
+
+#First Regression
+## Calculate scores with regression method and promax rotation
+FA_scores_reg = factanal(x = data_auto2, factors = 2,scores='regression', rotation = 'promax')
+scores_reg = FA_scores_reg$scores
+
+#put the scores into a data frame
+df_reg = data.frame(Factor1=scores_reg[,1], Factor2=
+                  scores_reg[,2])
+
+#Add the cylinders column from original data frame (With NA values omitted)
+#So we can then see how the data seems to be categorized by cylinders
+
+df_reg$cylinders = data_auto1$cylinders
+sr <- ggplot(df_reg,aes(x=Factor1,y=Factor2))+geom_text(aes(label=rownames(data_auto2),
+                                                      col = cylinders))+
+  theme_bw() + ggtitle("Factor Analysis Scores: Regression")
+
+
+## Now do the same as above, but with Bartlett method
+FA_scores = factanal(x = data_auto2, factors = 2,scores='Bartlett', rotation = 'promax')
+scores_Bart = FA_scores$scores
+
+#Put scores into data frame
+df_Bart = data.frame(Factor1=scores_Bart[,1], Factor2=
+                  scores_Bart[,2])
+
+#Add cylinders to data frame
+df_Bart$cylinders = data_auto1$cylinders
+
+#plot Bartlet scores
+sb <- ggplot(df_Bart,aes(x=Factor1,y=Factor2))+geom_text(aes(label=rownames(df_Bart),
+                                                       col = cylinders)
+                                                   )+
+  theme_bw() + ggtitle("Factor Analysis Scores:Bartlett")
+
+
+## Use grid.arrange to put both plots on same page
+grid.arrange(sr, sb)
+
+auto.pc = princomp(data_auto2, cor = TRUE)
+
+```
+Next, we can look at a couple of different methods to calculate our scores for our Factor Analysis; Regression and Bartlett. Again, we can see in our plots that there are some definite differences between the two methods. From our previous analysis using PCA, we saw that there are some distince attributes from the cylinder variable. With this knowledge and from our plots, we will use the Bartlett method as it gives us a more distinctive and interpretable separation by cylinder. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+pca_proj_auto <- as.data.frame(as.matrix(scale(data_auto2)) %*% 
+                                   loadings(auto.PCAcor)[,1:2])
+
+colnames(pca_proj_auto) <- c("V1", "V2")
+
+pca_proj_auto <- cbind(pca_proj_auto, data_auto1$car_name, data_auto1$model_year, 
+                         data_auto1$origin, data_auto1$cylinders)
+
+colnames(pca_proj_auto) <- c("V1", "V2", 'car_name', 'model_year', 'origin', 'cylinders')
+
+#dim(data_auto3)
+
+pc <- ggplot(data = pca_proj_auto, aes(x = V1, y=V2)) + 
+  geom_text(aes(label=rownames(data_auto3), col = cylinders)) +
+  ggtitle('Principal Component Analysis') + theme_bw()
+
+grid.arrange(sb,pc)
+cbind(auto.pc$loadings[,1:2],FA_scores$loadings)
+
+```
+
+
+When comparing our Factor Analysis to our Principal Component Analysis, we can see some similarities, most distinctly the data separating by number of cylinders. The rotation between the two analysises is nearly opposite, which also reflects the differences between the loadings values themselves. That is, the greater the number of cylinders, the larger Factor1 is for the Factor Analysis, but the smaller the first Principal Component is. The ranges in each of the graphs are also quite different, with the principal components ranging much further than the Factor loadings. 
+
+We can now look at how multidimensional scaling effects our data. Initially, we will do MDS, with a Euclidean distance measure, only on our non-categorical variables. From our plot here we can see both our MDS results as well as the data projected onto the first two Principal Components. As we would have expected, these two plots appear to be nearly identical. Once again, we use cylinders to show the distinct groupings in the data. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#Perform MDS
+source("http://bioconductor.org/biocLite.R")
+library(RDRToolbox)
+library(vegan)
+library(plotly)
+library(ggplot2)
+library(gridExtra)
+library(cluster)
+
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+dist_eu <- dist(scale(data_auto2), method = "euclidean")
+dist_eu_df <- as.data.frame(cmdscale(dist_eu, k =2))
+dist_eu_df$cylinders <- data_auto1$cylinders
+
+r = rownames(as.data.frame(cmdscale(dist_eu, k =2)))
+
+ep2 <- ggplot(data=dist_eu_df,aes(x = V1, y = V2)) +
+  geom_text(aes(label = rownames(dist_eu_df),col = cylinders)) +
+  theme_bw() + ggtitle('Euclidean MDS with Non-Categorical')
+
+grid.arrange(ep2, pc)
+```
+Unlike with PCA and FA however, we can include some of our categorical variables and apply MDS to more of our data set. In order to do this, we choose the Gower method to help weigh these categorical variables. Our Gower MDS thus includes every varaible except car name, which is almost unique for each data point. Once again, for consistency, we can choose to view our data and see how it all groups by number of cylinders. With our Gower MDS we can see even more unique grouplings by cylinders, which once again reflects the correlation between the variables that we saw in our introduction to the data. We can see however, that it does not align as well with our principal components. This does make sense as our principal components used just the non-categorical variables.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+## Doing MDS with categorical variables included
+dist_gower2 <- daisy(data_auto3, metric = "gower")
+
+gow_mds <- as.data.frame(cmdscale(dist_gower2))
+gow_mds$cylinders <- data_auto1$cylinders 
+
+gp <- ggplot(gow_mds, aes(x=V1, y=V2)) + geom_text(aes(label = rownames(gow_mds),
+                                                 col = cylinders)) +
+  theme_bw()+
+  ggtitle('Gower MDS')
+
+grid.arrange(gp, pc)
+
+```
+Overall, each of our methods are slightly different but do give us similar results. Both PCA and FA can be done with just two components and factors respectively. MDS, if done with just non-categorical variables is the same as our PCA. Throughout all of our analysis, we can see quite clearly that all the non-categorical variables are correlated with cylinders and have clear groupings by the number of cylinders. 
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+data_auto2s = scale(data_auto2)
+dist_abscor <- 1-abs(cor(t(data_auto2s)))
+dist_eu <- dist(data_auto2s, method = "euclidean")
+dist_man <- dist(data_auto2s, method = "manhattan")
+dist_sup <-  dist(data_auto2s, method = "maximum")
+dist_gower <-  daisy(data_auto3, metric = "gower")
+
+
+dist_list <- list(dist_abscor, dist_eu, dist_man, dist_sup, dist_gower)
+
+
+names(dist_list) <- c("abscor", "euclidean", "manhattan", "max", "gower")
+
+do.call("grid.arrange", c(lapply(names(dist_list), function(name) {
+  ggplot(data = as.data.frame(cmdscale(dist_list[[name]])), aes(x = V1, y = V2)) + 
+    geom_point(col = data_auto1$cylinders) + labs(title = name)
+}), nrow = 3, top = 'By # of Cylinders'))
+
+
+
+##compare to pc
+mds_results <- cmdscale(dist_eu, k=2)
+pca_scores <- princomp(data_auto2s)$scores[,1:2]
+colnames(pca_scores) <- c("V1", "V2")
+scores_list <- list(mds_results, pca_scores)
+names(scores_list) <- c("MDS", "PCA")
+do.call("grid.arrange", c(lapply(names(scores_list), function(name) {
+  ggplot(data = as.data.frame(scores_list[[name]]), aes(x = V1, y = V2)) + 
+    geom_point() + labs(title = name)
+}), nrow = 2))
+
+
+dist_eu_df <- as.data.frame(cmdscale(dist_eu, k =2))
+dist_eu_df$cylinders <- data_auto1$cylinders
+
+r = rownames(as.data.frame(cmdscale(dist_eu, k =2)))
+
+ep2 <- ggplot(data=dist_eu_df,aes(x = V1, y = V2)) +
+  geom_text(aes(label = rownames(dist_eu_df),col = cylinders)) +
+  theme_bw() + ggtitle('Euclidean MDS with Non-Categorical')
+
+auto_distance <- dist(data_auto2, method = "euclidean")
+
+data_auto2s <- scale(data_auto2)
+data_auto1s <- as.data.frame(scale(data_auto3))
+
+
+auto_mds <- as.data.frame(cmdscale(auto_distance))
+auto_mds$cylinders = data_auto1s$cylinders
+
+
+ep <- ggplot(auto_mds, aes(x = V1, y = V2)) + geom_text(aes(label = rownames(auto_mds), 
+                                                      col = cylinders))
+
+```
+

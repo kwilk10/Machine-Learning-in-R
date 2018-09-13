@@ -1,0 +1,121 @@
+---
+title: "Multidimensional Scaling on Airline Distance data"
+author: "Katherine Wilkinson"
+date: "1/31/2018"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+```
+
+Write your own code to implement classical MDS program to produce a 2-dimensional map for airline distances among 10 US cities. The data used is UScitiesD found in base R. 
+
+```{r, warning = FALSE, echo = FALSE}
+
+citiesd <- as.matrix(UScitiesD)  #input distance matrix
+
+
+n = 10
+
+## Create vector of 1 x 10
+one <- as.matrix(c(1,1,1,1,1,1,1,1,1,1))
+
+## Identity matrix is diag 10x10
+i <- diag(10)
+
+#Calculate G with above matrices
+G = -(1/2)*(i-(1/n)*one %*% t(one))%*% citiesd %*% (i-(1/n)*one %*% t(one))
+
+#U will be eigen vectors
+U = eigen(G)$vectors[,1:2]
+
+#Lambda is eigen values
+lambda = as.matrix(eigen(G)$values[1:2])
+
+## Create Z matrix from Eigen Vectors times corresponding eigen values
+Z1 = as.data.frame(c(sqrt(lambda[1])*U[,1]))
+Z2 = as.data.frame(c(sqrt(lambda[2])*U[,2]))
+Z = cbind(Z1, Z2)
+
+colnames(Z) = c('Z1', 'Z2')
+
+##Plot
+ggplot(data = Z, aes(x=-Z1, y = -Z2)) +
+  geom_text(aes(label = colnames(citiesd))) +
+  xlab('West <<<(-Z1) >>> East  ') +
+  ylab('South <<< (-Z2) >>> North   ') +
+  ggtitle('MDS of D')
+```
+Note: When plotting chose to plot -Z1 and -Z2 in order to get a more sensible map with East and West in the common direction. 
+
+## b. Raise distance matrix to some value
+
+Try one or more choices of distances defined in terms of the given distance matrix and report your findings. 
+
+First raise the cities distance matrix to 0.5 to see how the distance map changes
+```{r, echo = FALSE}
+citiesd_t1 <- citiesd^(.5)
+citiesd_t2 <- citiesd^(2)
+
+one <- as.matrix(c(1,1,1,1,1,1,1,1,1,1))
+
+i <- diag(10)
+
+G = -(1/2)*(i-(1/n)*one %*% t(one))%*% citiesd_t1 %*% (i-(1/n)*one %*% t(one))
+
+
+U = eigen(G)$vectors[,1:2]
+lambda = as.matrix(eigen(G)$values[1:2])
+
+
+Z1 = as.data.frame(c(sqrt(lambda[1])*U[,1]))
+Z2 = as.data.frame(c(sqrt(lambda[2])*U[,2]))
+Z = cbind(Z1, Z2)
+
+colnames(Z) = c('Z1', 'Z2')
+ggplot(data = Z, aes(x=-Z1, y = -Z2)) +
+  geom_text(aes(label = colnames(citiesd_t1))) +
+  xlab('-Z1') +
+  ylab('-Z2') +
+  ggtitle('MDS of D^(1/2)')
+
+
+```
+We can see that our MDS does change quite a bit when the distance matrix is changed. Most notably, our 'northern' cities now appear to be 'southern' cities. We can also see that the ranges/axes themselvs have shrunk drastically, indicating that the distances themselves have grown smaller. 
+
+Next we square our distance matrix to see what the effect will be of raising it to a value greater than 1. 
+```{r, echo = FALSE}
+citiesd_t2 <- citiesd^(2)
+one <- as.matrix(c(1,1,1,1,1,1,1,1,1,1))
+
+i <- diag(10)
+
+G = -(1/2)*(i-(1/n)*one %*% t(one))%*% citiesd_t2 %*% (i-(1/n)*one %*% t(one))
+
+
+U = eigen(G)$vectors[,1:2]
+lambda = as.matrix(eigen(G)$values[1:2])
+
+
+Z1 = as.data.frame(c(sqrt(lambda[1])*U[,1]))
+Z2 = as.data.frame(c(sqrt(lambda[2])*U[,2]))
+Z = cbind(Z1, Z2)
+
+colnames(Z) = c('Z1', 'Z2')
+ggplot(data = Z, aes(x=-Z1, y = -Z2)) +
+  geom_text(aes(label = colnames(citiesd))) +
+  xlab('-Z1') +
+  ylab('-Z2') +
+  ggtitle('MDS of D^2')
+
+
+```
+
+Here we can see that our 'northern' cities are back to being northern while our 'southern' cities are back to being southern. The distances between cities is noticeably larger, with our x-axis now going to -1500 to over 1000 and our y-axis from -600 to 600. 
