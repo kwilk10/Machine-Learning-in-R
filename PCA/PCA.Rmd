@@ -1,0 +1,241 @@
+---
+title: "Principal Component Analysis with Automobile data"
+author: "Katherine Wilkinson"
+date: "1/19/2018"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this exercise you are welcome to use an existing PCA package. Here we use princomp from the GGally library. The data set used (auto-mpg.data) concernce city-cycle fuel consumption in miles per gallon (mpg) and other attributed collected for 398 vehicle instances. 
+## (a) Describe the Data
+
+Describe the data and present some intial pictorial and numerical summaries, such as scatterplots, histograms, etc. Consider which variables should or should not be included in PCA on this dataset. Compare PCA on covariances and correlations. 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+rm(list=ls())
+setwd("/Users/maraudersmap/Documents/Machine-Learning-in-R/PCA")
+library(dplyr)
+library(ggplot2)
+library(GGally)
+
+## Read Data In
+data_auto = read.table('auto-mpg.data', header = FALSE)
+
+## Rename column names
+colnames(data_auto) <- c('mpg','cylinders','displacement','horsepower',
+                        'weight','acceleration',
+                        'model_year','origin','car_name')
+
+
+#make horsepower numeric (?)
+data_auto$horsepower <- as.numeric(as.character(data_auto$horsepower))
+summary(data_auto)
+
+
+data_auto3 <- data_auto %>% 
+  dplyr::select(-car_name, -cylinders, -model_year, -origin)
+
+data_auto3 <- na.omit(data_auto3)
+
+# use mpg, displacement, horsepower, weight, acceleration
+
+## a. Describe data with numerical and graphical 
+
+
+data_auto4 <- na.omit(data_auto)
+data_auto4.2 <- data_auto4 %>% dplyr::select(-car_name)
+
+data_auto3 <- scale(data_auto3, scale = FALSE)
+
+data_auto4.2 <- as.data.frame(scale(data_auto4.2, scale = FALSE))
+
+## create plots (histogram and covariance plot) of data
+ggpairs(data_auto4.2, diag = list(continuous = 'barDiag'),
+        upper = list(continuous='points', combo = 'dot'),
+        lower = list(continuous = 'cor', combo = 'dot'))
+  
+```
+Our original dataset has 8 variables with 398 observations. From our summary of each variable, we can see there are a few categorical variables, particularly the car name. We can see with the histogram and covariance plot (Figure 1) there there is some definite correlation between a few of our variables. Immediately, we can see that origin, cylinders and model year are categorical. There does seem to be some trends in model year, most noteable with mpg and weight. MPG has a positive correlation with model year while weight has a negative correlation with model year, suggesting that over the years, mpg for vehicles has increased and weight has decreased. 
+
+Our non-categorical variables have more interesting relationships. For instance, mpg has relatively high negative correlation with both displacement and weight with -0.805 and -0.832 respectively. In contrast, horsepower is positively correlated with displacement and weight with 0.897 and 0.865 correlation respectively. Horsepower and mpg also seem to be slightly negatively correlated with a correlation of -0.778.  We can also see that displacement and weight are highly positively correlated with a correlation of 0.933. Our final numeric variable, acceleration, interestingly does not have as high of correlation with any of our other variables. This can be seen easily in the scatter plots. 
+
+In order to reduce the dimensionality of our data, we are going to use Principal Component Analysis (PCA). For our PCA, we will use just our non-categorical variables, mpg, displacement, weight, horsepower, and acceleration. 
+
+Initially, we will calculate all the principa; components (PCs) using first the covariance matrix and then using the correlation matrix to view the results for unstandardized data and standardized data. 
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+# use mpg, displacement, horsepower, weight, acceleration
+
+## b. compare PCA on covariances and correlations
+
+##Covariance PCA with full data (minus car name)
+
+#Scale = T --> cor = T (aka doing on correlation)
+#Scale = F --> cor = F (aka doing on covariance)
+auto.PCAcor <- princomp(data_auto3, cor=T)
+
+
+auto.PCAcov <- princomp(data_auto3, cor = F)
+
+auto.PCAcov$sdev^2
+auto.PCAcov$loadings
+
+auto.PCAcor$sdev^2
+auto.PCAcor$loadings
+
+auto.PCAcor$sdev
+
+
+```
+The covariance matrix PCs are quite large, with our first PC at $7.3*10^5$. In contrast, the first PC for the correlation matrix is $3.9267$. The loadings are also quite different. 
+Since our numeric variables are measured on different scales (for instance mpg is measured differently than horsepower), we will use the PCs from our correlation matrix so our data is standardized. 
+
+## (c) Percentage of variance explained
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+## c. Comment on percentage of variance explained and number of PCs to retain
+lambdas <- as.matrix(auto.PCAcor$sdev^2)
+auto.PCAcor$sdev^2
+lambdas
+#percentage of variance explained by 1st PCA
+per1 <- lambdas[1]/sum(lambdas[,1])
+per1
+#percentage of variance explained by 2nd PCA
+per2 <- lambdas[2]/sum(lambdas[,1])
+#percentage of variance explained by 3rd PCA
+per3 <- lambdas[3]/sum(lambdas[,1])
+
+per4 <- lambdas[4]/sum(lambdas[,1])
+
+per5 <- lambdas[5]/sum(lambdas[,1])
+
+per1 + per2
+per1
+per2
+per3
+per4
+per5
+
+
+barplot(auto.PCAcor$sdev^(2), main = 'Scree Diagram from Correlations', xlab = 'Components',
+        ylab = 'Variation Explained')
+
+
+```
+Initially there are 5 PCs, which summed together, explain all the variance. Each PC explains a percentage of the total variance, as seen in the table below. 
+
+% PC 1 | % PC 2|% PC 3|% PC 4|% PC 5
+--------|--------|--------|-------|--------
+$78.54\%$ | $14.24\%$ | $4.51\%$ | $1.66\%$ | $1.05\%$
+
+From here, we can see that with just the first 2 PCs, $92.775\%$ of the variance is explained. We can also see from the scree diagram that there is a significant jump in variance explained after the 3rd PC. Thus, moving forward, we will use just the first two principal components. 
+
+## Factor Loadings
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+auto.PCAcor$loadings
+```
+The first PC is not super highly correlated with any of the variables, as seen by the factor loadings above. The first PC is negatively correlated with displacement, weight, and horsepower, thus it increases as these variables decrease. Alternatively, as mpg and acceleration increase, the first component also increases. 
+
+The second componenet however, is relatively highly correlated with acceleration at $-0.876$. When we look beyond the first two compoenent, we can see that the third component is highly correlated with mpg at $0.839$, but is not very correlated with the other variables. The last two PCs are not correlated at all with mpg and only have higher correlation with a single variable each (horsepower and weight respectively). 
+
+## Plot data projected on first two PCs
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+pca_proj_auto <- as.data.frame(as.matrix(data_auto3) %*% 
+                                   loadings(auto.PCAcor)[,1:2])
+
+colnames(pca_proj_auto) <- c("V1", "V2")
+
+data_auto4 <- na.omit(data_auto)
+
+
+pca_proj_auto <- cbind(pca_proj_auto, data_auto4$car_name, data_auto4$model_year, 
+                         data_auto4$origin, data_auto4$cylinders)
+
+colnames(pca_proj_auto) <- c("V1", "V2", 'car_name', 'model_year', 'origin', 'cylinders')
+
+
+ggplot(data = pca_proj_auto) + 
+  geom_point(aes(x = V1, y = V2, col = model_year)) +
+  ggtitle('Car data by Model Year on first two PCs')
+
+ggplot(data = pca_proj_auto) + 
+  geom_point(aes(x = V1, y = V2, col = origin)) +
+  ggtitle('Car data by Origin on first two PCs')
+
+ggplot(data = pca_proj_auto) + 
+  geom_point(aes(x = V1, y = V2, col = cylinders)) +
+  ggtitle('Car data by Cylinders on first two PCs')
+
+
+```
+The plots of the data projected on the first two PCs do not appear to show any major outliers, although there is one point right about in the middle of the graph that may be a slight outlier. There also does appear to be some categorical attributes, particularly by cylinder and (slightly) origin. That is, the data is sepatated and grouped by number of cylinders in the third graph. 
+
+
+
+## Bootstrapping
+
+Compute boostrap confidence intervals for the percentage of variance explained by the first 2 PCs. 
+
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+# Bootstrap to 
+bootstrap_indices <- lapply(1:1000, function(i) {sample(1:nrow(data_auto3), replace = T)})
+
+pca_bootstrap_results <- sapply(bootstrap_indices, function(bi) {princomp(data_auto3[bi,], cor = T)$sdev^2})
+
+
+bootstrap_prop <- as.data.frame(t(pca_bootstrap_results))
+
+
+colnames(bootstrap_prop) <- c("V1", "V2", "V3", 'V4', 'V5')
+bootstrap_prop <- bootstrap_prop %>% mutate(per_var = (V1+V2)/(V1+V2+V3+V4+V5)) %>%
+  mutate(per_v1 = (V1)/(V1+V2+V3+V4+V5),
+         per_v2 = (V2)/(V1+V2+V3+V4+V5),
+         per_v3 = (V3)/(V1+V2+V3+V4+V5)) %>% 
+  dplyr ::select(per_var, per_v1, per_v2, per_v3)
+
+bootstrap_sum1 <- apply(t(bootstrap_prop), 1 , 
+                        function(results){c(quantile(results, probs = c(0.25, 0.975)))})
+
+bootstrap_sum1.2 <- bootstrap_sum1[,2:3]
+
+
+bootstrap_summary <- apply(t(bootstrap_prop$per_var), 1, 
+                           function(result) {c(quantile(result, probs = c(0.025, 0.975)))})
+
+
+```
+Bootstrapping our data, we get many different samples of PCs and thus many different percentage of variance explained by the first 2 PCs that we retained for this dataset. From this we calculate the following 95% confidence interval for the percentage of variance explained by the first and the second principal component. 
+
+CI|$\%$ from PC1 | $\%$ from PC2
+--------|--------|------------- 
+$2.5\%$|$77.801\%$|$13.647\%$
+$97.5\%$|$80.778\%$|$16.127\%$
+
+
+We can also calculate a confidence interval for the sum of the percentage of variance explained by the first 2 PCs:
+
+$2.5\%$|$97.5\%$
+--------|--------
+$91.87\%$|$93.76\%$
+
+This follows our results we calculated above where we got $92.775\%$ variance explained by the first two PCs. We can also see this in our histogram of the bootstrap samples of the percent variance explained by the first two PCs, where most of our points fall within the confidence interval. 
+
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+
+ggplot(bootstrap_prop) + geom_histogram(aes(per_var)) + 
+  ggtitle('Percent Variance by First 2 PCs')
+
+```
+
+## Biplot
+
+```{r,message = FALSE, warning = FALSE, echo = FALSE}
+
+biplot(auto.PCAcor, scale = 0)
+
+```
+Finally, we can look at a PCA biplot and see how each of our data points align with our variable directions. We can see that all of our data points are fairly clustered along the weight and mpg, which look to be nearly perfectly negatively correlated. However, there is a clump of data points that have less horsepower. We can also see clearly that acceleration is not very correlated with any of the other variables. 
