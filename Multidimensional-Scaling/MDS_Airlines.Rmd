@@ -60,6 +60,8 @@ Note: When plotting chose to plot -Z1 and -Z2 in order to get a more sensible ma
 Try one or more choices of distances defined in terms of the given distance matrix and report your findings. 
 
 First raise the cities distance matrix to 0.5 to see how the distance map changes
+
+
 ```{r, echo = FALSE}
 citiesd_t1 <- citiesd^(.5)
 citiesd_t2 <- citiesd^(2)
@@ -88,9 +90,12 @@ ggplot(data = Z, aes(x=-Z1, y = -Z2)) +
 
 
 ```
+
+
 We can see that our MDS does change quite a bit when the distance matrix is changed. Most notably, our 'northern' cities now appear to be 'southern' cities. We can also see that the ranges/axes themselvs have shrunk drastically, indicating that the distances themselves have grown smaller. 
 
 Next we square our distance matrix to see what the effect will be of raising it to a value greater than 1. 
+
 ```{r, echo = FALSE}
 citiesd_t2 <- citiesd^(2)
 one <- as.matrix(c(1,1,1,1,1,1,1,1,1,1))
