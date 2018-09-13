@@ -3,9 +3,9 @@ title: "503 HW1 Problem 3"
 author: "Katherine Wilkinson"
 date: "1/24/2018"
 output:
-  pdf_document: default
-  word_document: default
   html_document: default
+  word_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
